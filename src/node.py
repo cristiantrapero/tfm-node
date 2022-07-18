@@ -5,100 +5,67 @@ import gc
 import time
 import ujson
 
-# LED status indicator 
-ble_connected = False
-lora_connected = False
+LORA_NODES_DISCOVERED = 0
+NODE_NAME = ''
 
-# Data to recieve over BLE
-data_to_send = b''
-
-# LoRa directions
-myaddr = ""
-rcvraddr = ""
-
-# Update led status indicator
-def update_status(ble_connected=None):
-    if not ble_connected and not lora_connected:
-        pycom.rgbled(0x7f0000) #red
-
-    if not ble_connected and lora_connected:
-        pycom.rgbled(0x0000FF) #blue
-
-    if ble_connected and lora_connected:
-        pycom.rgbled(0x007f00) #green
-
-    if ble_connected and not lora_connected:
-        pycom.rgbled(0xFFFF00) #yellow
-
-# Connection/disconnection callback
-def connection_ble(bt_o):
+def ble_connection_handler(bt_o):
     events = bt_o.events()
     if events & Bluetooth.CLIENT_CONNECTED:
-        print("Sender: BLE connected")
-        update_status(True)
+        print("BLE connected")
 
     elif events & Bluetooth.CLIENT_DISCONNECTED:
-        print("Sender: BLE disconnected")
-        update_status(False)
+        print("BLE disconnected")
 
-def save_data_to_send(data):
-    global data_to_send
-    if (data != None):
-        data_to_send += data
-    else:
-        data_to_send = b''
+def ble_name_callback(chr, arg1=None):
+    global NODE_NAME
 
-# Write image callback
-def receive_image_ble(chr, data):
-    events, value = data
+    events = chr.events()
     if  events & Bluetooth.CHAR_WRITE_EVENT:
-        print("Sender: Write request with value = {}".format(value))
-        save_data_to_send(value)
-
-def send_image_lora(chr, data):
-    events, value = data
-    if  events & Bluetooth.CHAR_WRITE_EVENT:
-        print(value)
-        if value == b'send':
-            t0 = time.time()
-            addr, quality, result = ctpc.sendit(rcvraddr, data_to_send)
-            t1 = time.time()
-            timetosend = t1-t0
-            print("Sender: ACK from {} (time = {:.4f} seconds, quality = {}, result {})".format(addr, timetosend, quality, result))
-            save_data_to_send(None)
-
-bluetooth = Bluetooth()
-bluetooth.set_advertisement(name='LoPy-IMGoverLora', service_uuid=b'36c4919279684969')
-bluetooth.callback(trigger=Bluetooth.CLIENT_CONNECTED | Bluetooth.CLIENT_DISCONNECTED, handler=connection_ble)
-bluetooth.advertise(True)
-
-service = bluetooth.service(uuid=b'ce397c4d744e41ab', isprimary=True, nbr_chars=2)
-char1 = service.characteristic(uuid=b'0242ac120002a8a3')
-char1_callback = char1.callback(trigger=Bluetooth.CHAR_WRITE_EVENT, handler=receive_image_ble)
-
-char2 = service.characteristic(uuid=b'0f18b91b2afc3e3d')
-char2_callback = char2.callback(trigger=Bluetooth.CHAR_WRITE_EVENT, handler=send_image_lora)
-
-# Enable garbage collector 
-gc.enable()
-
-# Create loractp endpoint
-ctpc = loractp.CTPendpoint()
-
-# Connect to node B
-status = -1
-update_status()
-
-while (status == -1):
-    myaddr, rcvraddr, quality, status = ctpc.connect()
-
-    if (status == 0):
-        print("Sender: LoRa connection from {} to me ({})".format(rcvraddr, myaddr))
-        lora_connected = True
-
+        print("BLE node name write event: {}".format(chr.value().decode('utf-8')))
+        NODE_NAME = chr.value().decode('utf-8')
     else:
-        print("Sender: Failed LoRa connection from {} to me ({})".format(rcvraddr, myaddr))
-        lora_connected = False
+        print("BLE node name read event")
+        return NODE_NAME
 
-    update_status()
-    time.sleep(5)
+def ble_lora_nodes_callback(chr, arg1=None):
+    global LORA_NODES_DISCOVERED
+
+    events = chr.events()
+    if  events & Bluetooth.CHAR_READ_EVENT:
+        print("BLE lora nodes read event")
+        return LORA_NODES_DISCOVERED
+
+def setup_ble(node_name):
+    bluetooth = Bluetooth()
+    bluetooth.set_advertisement(name=node_name, service_uuid=b'36c4919279684969')
+    bluetooth.callback(trigger=Bluetooth.CLIENT_CONNECTED | Bluetooth.CLIENT_DISCONNECTED, handler=ble_connection_handler)
+    bluetooth.advertise(True)
+
+    service1 = bluetooth.service(uuid=b'ce397c4d744e41ab', isprimary=True)
+    char1 = service1.characteristic(uuid=b'0242ac120002a8a3', value=NODE_NAME)
+    char1_callback = char1.callback(trigger=Bluetooth.CHAR_READ_EVENT, handler=ble_name_callback)
+
+    service1 = bluetooth.service(uuid=b'ce397c4d744e41ac', isprimary=True)
+    char1 = service1.characteristic(uuid=b'0242ac120002a8ad', value=LORA_NODES_DISCOVERED)
+    char1_callback = char1.callback(trigger=Bluetooth.CHAR_READ_EVENT, handler=ble_lora_nodes_callback)
+
+def main():
+    global NODE_NAME
+    ctpc = loractp.CTPendpoint()
+
+    my_lora_mac = ctpc.get_lora_mac()
+    my_addr = ctpc.get_my_addr()
+    my_node_name = "NODE-{}".format(my_addr)
+    NODE_NAME = my_node_name
+
+    setup_ble(my_node_name)
+
+    print("Setup BLE done!")
+    print("I'm the node: {}".format(my_node_name))
+    print("My lora UID is: {}".format(my_lora_mac))
+    print("My addr: {}".format(my_addr))
+
+    gc.enable()
+
+if __name__ == "__main__":
+    main()

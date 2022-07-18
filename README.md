@@ -14,7 +14,7 @@ This is implemented for the __Pycom LoPy 4__. The LoPy setups a BLE server to be
 7. Change the `"address": "COM5"` in the pymakr.conf file to your corresponding setial port listed
 8. Run the Pymakr command: `Upload`
 9. Wait until load the project in the LoPy 4
-10. Open the `receiver.py` file in the Atom editor and select `Run` in the Pymakr bar.
+10. Open the `node.py` file in the Atom editor and select `Run` in the Pymakr bar.
 11. Connect the Android application to the sender node and take the image and send it. The application is located in: https://github.com/cristiantrapero/tfm-android
 
 # Files

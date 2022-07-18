@@ -63,7 +63,7 @@ class CTPendpoint:
                 tx_retries   = 1,
                 device_class = LoRa.CLASS_A)
 
-        # Get lora mac address
+        # Get lora mac address (device EUI)
         self.lora_mac = binascii.hexlify(network.LoRa().mac())
         self.my_addr  = self.lora_mac[8:]
 
@@ -359,3 +359,9 @@ class CTPendpoint:
     def recvit(self, addr=ANY_ADDR):
         rcvd_data, snd_addr = self._crecv(self.s, self.lora_mac, addr)
         return rcvd_data, snd_addr
+
+    def get_lora_mac(self):
+        return (self.lora_mac).upper().decode('utf-8')
+
+    def get_my_addr(self):
+        return (self.my_addr).upper().decode('utf-8')
