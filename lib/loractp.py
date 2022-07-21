@@ -11,6 +11,7 @@ Modified by: Pietro GRC apr2020
 """
 
 from network import LoRa
+from machine import RTC
 import binascii
 import gc
 import hashlib
@@ -28,7 +29,7 @@ class CTPendpoint:
 
     # Set to True for debugging messages
     DEBUG_MODE_SEND = False
-    DEBUG_MODE_RECV = True
+    DEBUG_MODE_RECV = False
     HARD_DEBUG_MODE = False
 
     MAX_PKT_SIZE = 230  # Maximum pkt size in LoRa with Spread Factor 7
@@ -48,6 +49,9 @@ class CTPendpoint:
     ONE  = 1
     ZERO = 0
 
+    # List of discovered nodes
+    DISCOVERED_NODES = {}
+
     def __init__(self):
 
         self.lora = LoRa(mode=LoRa.LORA, region=LoRa.EU868)
@@ -58,6 +62,9 @@ class CTPendpoint:
 
         # Create a raw LoRa socket
         self.s = socket.socket(socket.AF_LORA, socket.SOCK_RAW)
+        self.rtc = RTC()
+        self.rtc.init((2022, 7, 21, 19, 47, 0, 0, 0))
+
 
     #
     # BEGIN: Utility functions
@@ -128,6 +135,17 @@ class CTPendpoint:
     #
     # END: Utility functions
     #
+
+    # Register node in discovered list of nodes
+    def __register_node(self, node_name):
+        # Convert to string
+        node_name = node_name.decode('utf-8')
+        if self.DEBUG_MODE_RECV: print ("DEBUG RECV 293: HELLO received. Registering node{}".format(node_name))
+        if node_name not in self.DISCOVERED_NODES:
+            self.DISCOVERED_NODES[node_name] = {}
+            self.DISCOVERED_NODES[node_name] = "-".join(map(str, self.rtc.now()[:6]))
+        else:
+            self.DISCOVERED_NODES[node_name]['last_seen'] = "-".join(map(str, self.rtc.now()[:6]))
 
     def _csend(self, payload, the_sock, sndr_addr, rcvr_addr, need_ack=True):
 
@@ -254,6 +272,7 @@ class CTPendpoint:
         # Shortening addresses to last 8 bytes
         my_addr  = my_addr[8:]
         snd_addr = snd_addr[8:]
+        need_ack = True
         if self.DEBUG_MODE_RECV: print ("DEBUG RECV 264: my_addr, snd_addr: ", my_addr, snd_addr)
 
         # Buffer storing the received data to be returned
@@ -276,6 +295,13 @@ class CTPendpoint:
                 if self.DEBUG_MODE_RECV: print ("DEBUG RECV 283: packet received: ", packet)
                 inp_src_addr, inp_dst_addr, inp_seqnum, inp_acknum, is_ack, last_pkt, check, content = self.__unpack(packet)
                 if self.DEBUG_MODE_RECV: print ("DEBUG RECV 286: inp_src_addr {}, inp_dst_addr {}, inp_seqnum {}, inp_acknum {}, is_ack {}, last_pkt {}, check {}, content {}".format(inp_src_addr, inp_dst_addr, inp_seqnum, inp_acknum, is_ack, last_pkt, check, content))
+
+                # If destination address is broadcast and mensage hello, then no send acknowledgement package
+                if (inp_dst_addr == self.ANY_ADDR) and (content == b'HELLO'):
+                    need_ack = False
+                    if self.DEBUG_MODE_RECV: print ("DEBUG RECV 294: HELLO received. No need to send ACK")
+                    self.__register_node(inp_src_addr)
+
                 # getting sender address, if unknown, with the first packet
                 if (not SENDER_ADDR_KNOWN):
                     snd_addr = inp_src_addr
@@ -298,29 +324,35 @@ class CTPendpoint:
                 rcvd_data += content
                 last_check = check
 
-                # Sending ACK
-                next_acknum = (inp_acknum + self.ONE) % 2
-                ack_segment = self.__make_packet(my_addr, inp_src_addr, inp_seqnum, next_acknum, self.ITS_ACK_PACKET, last_pkt, b'')
-                if self.DEBUG_MODE_RECV: print ("DEBUG RECV 310: Forwarded package", self.p_resend)   ###
-                self.p_resend = self.p_resend + 1   ###
-                the_sock.setblocking(False)
-                the_sock.send(ack_segment)
-                if self.DEBUG_MODE_RECV: print("DEBUG RECV 314: Sent ACK", ack_segment)
-                if (last_pkt):
+                if need_ack:
+                    # Sending ACK
+                    next_acknum = (inp_acknum + self.ONE) % 2
+                    ack_segment = self.__make_packet(my_addr, inp_src_addr, inp_seqnum, next_acknum, self.ITS_ACK_PACKET, last_pkt, b'')
+                    if self.DEBUG_MODE_RECV: print ("DEBUG RECV 310: Forwarded package", self.p_resend)   ###
+                    self.p_resend = self.p_resend + 1   ###
+                    the_sock.setblocking(False)
+                    the_sock.send(ack_segment)
+                    if self.DEBUG_MODE_RECV: print("DEBUG RECV 314: Sent ACK", ack_segment)
+                    if (last_pkt):
+                        break
+                else:
                     break
             elif (checksum_OK) and (last_check == check) and (snd_addr == inp_src_addr):
                 # KN: Handlig ACK lost
                 rcvd_data += content
 
-                # KN: Re-Sending ACK
-                next_acknum = (inp_acknum + self.ZERO) % 2
-                ack_segment = self.__make_packet(my_addr, inp_src_addr, inp_seqnum, next_acknum, self.ITS_ACK_PACKET, last_pkt, b'')
-                self.p_resend = self.p_resend -1 #CHANGED
-                if self.DEBUG_MODE_RECV: print ("DEBUG RECV 325: Forwarded package", self.p_resend)   ###
-                the_sock.setblocking(False)
-                the_sock.send(ack_segment)
-                if self.DEBUG_MODE_RECV: print("DEBUG RECV 328: re-sending ACK", ack_segment)
-                if (last_pkt):
+                if need_ack:
+                    # KN: Re-Sending ACK
+                    next_acknum = (inp_acknum + self.ZERO) % 2
+                    ack_segment = self.__make_packet(my_addr, inp_src_addr, inp_seqnum, next_acknum, self.ITS_ACK_PACKET, last_pkt, b'')
+                    self.p_resend = self.p_resend -1 #CHANGED
+                    if self.DEBUG_MODE_RECV: print ("DEBUG RECV 325: Forwarded package", self.p_resend)   ###
+                    the_sock.setblocking(False)
+                    the_sock.send(ack_segment)
+                    if self.DEBUG_MODE_RECV: print("DEBUG RECV 328: re-sending ACK", ack_segment)
+                    if (last_pkt):
+                        break
+                else:
                     break
             else:
                 if self.DEBUG_MODE_RECV: print ("DEBUG RECV 332: packet not valid", packet)
@@ -366,3 +398,6 @@ class CTPendpoint:
 
     def get_my_addr(self):
         return (self.my_addr).upper().decode('utf-8')
+
+    def get_discovered_nodes(self):
+        return self.DISCOVERED_NODES

@@ -6,8 +6,8 @@ import time
 import ujson
 import _thread
 
-LORA_NODES_DISCOVERED = 0
 NODE_NAME = ''
+DISCOVERED_NODES = {}
 
 def ble_connection_handler(bt_o):
     events = bt_o.events()
@@ -28,13 +28,16 @@ def ble_name_callback(chr, arg1=None):
         print("BLE node name read event")
         return NODE_NAME
 
-def ble_lora_nodes_callback(chr, arg1=None):
-    global LORA_NODES_DISCOVERED
-
+def ble_lora_nodes_discovered_callback(chr, arg1=None):
     events = chr.events()
-    if  events & Bluetooth.CHAR_READ_EVENT:
+    if events & Bluetooth.CHAR_READ_EVENT:
         print("BLE lora nodes read event")
-        return LORA_NODES_DISCOVERED
+        nodes = get_discovered_nodes()
+        return nodes
+
+def get_discovered_nodes():
+    global DISCOVERED_NODES
+    return ujson.dumps(DISCOVERED_NODES)
 
 def setup_ble(node_name):
     bluetooth = Bluetooth()
@@ -47,8 +50,8 @@ def setup_ble(node_name):
     char1_callback = char1.callback(trigger=Bluetooth.CHAR_READ_EVENT, handler=ble_name_callback)
 
     service1 = bluetooth.service(uuid=b'ce397c4d744e41ac', isprimary=True)
-    char1 = service1.characteristic(uuid=b'0242ac120002a8ad', value=LORA_NODES_DISCOVERED)
-    char1_callback = char1.callback(trigger=Bluetooth.CHAR_READ_EVENT, handler=ble_lora_nodes_callback)
+    char1 = service1.characteristic(uuid=b'0242ac120002a8ad')
+    char1_callback = char1.callback(trigger=Bluetooth.CHAR_READ_EVENT, handler=ble_lora_nodes_discovered_callback)
 
 def send_hello(ctpc, delay, id):
     while True:
@@ -57,6 +60,7 @@ def send_hello(ctpc, delay, id):
 
 def main():
     global NODE_NAME
+    global DISCOVERED_NODES
     ctpc = loractp.CTPendpoint()
 
     my_lora_mac = ctpc.get_lora_mac()
@@ -82,6 +86,7 @@ def main():
         rcvd_data, snd_addr = ctpc.recvit()
         print("Received from: {} {}".format(rcvd_data, snd_addr))
         # print("Sender: LoRa connection from {} to me ({}) {} ".format(rcvraddr, myaddr, status))
+        DISCOVERED_NODES = ctpc.get_discovered_nodes()
         time.sleep(5)
         # print("Scanning done!")
 
