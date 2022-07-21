@@ -141,11 +141,9 @@ class CTPendpoint:
         # Convert to string
         node_name = node_name.decode('utf-8')
         if self.DEBUG_MODE_RECV: print ("DEBUG RECV 293: HELLO received. Registering node{}".format(node_name))
-        if node_name not in self.DISCOVERED_NODES:
-            self.DISCOVERED_NODES[node_name] = {}
-            self.DISCOVERED_NODES[node_name] = "-".join(map(str, self.rtc.now()[:6]))
-        else:
-            self.DISCOVERED_NODES[node_name]['last_seen'] = "-".join(map(str, self.rtc.now()[:6]))
+        self.DISCOVERED_NODES[node_name] = {}
+        # FIXME: If add the datetime the ble callback is called multiple times 
+        # self.DISCOVERED_NODES[node_name] = "-".join(map(str, self.rtc.now()[:6]))
 
     def _csend(self, payload, the_sock, sndr_addr, rcvr_addr, need_ack=True):
 
@@ -371,7 +369,7 @@ class CTPendpoint:
         return self.my_addr, rcvr_addr, stats_retrans, FAILED
 
     def hello(self, dest=ANY_ADDR):
-        print("loractp: send hello to... ", dest)
+        if self.DEBUG_MODE_SEND: print("loractp: send hello to... ", dest)
         rcvr_addr, stats_psent, stats_retrans, FAILED = self._csend(b"HELLO", self.s, self.lora_mac, dest, need_ack=False)
         return self.my_addr, rcvr_addr, stats_retrans, FAILED
 
