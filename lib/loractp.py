@@ -27,11 +27,6 @@ __version__ = '0'
 
 class CTPendpoint:
 
-    # Set to True for debugging messages
-    DEBUG_MODE_SEND = False
-    DEBUG_MODE_RECV = False
-    HARD_DEBUG_MODE = False
-
     MAX_PKT_SIZE = 230  # Maximum pkt size in LoRa with Spread Factor 7
     HEADER_SIZE  = 20
     PAYLOAD_SIZE = MAX_PKT_SIZE - HEADER_SIZE
@@ -52,7 +47,7 @@ class CTPendpoint:
     # List of discovered nodes
     DISCOVERED_NODES = {}
 
-    def __init__(self):
+    def __init__(self, debug_send=False, debug_recv=False, debug_hard=False):
 
         self.lora = LoRa(mode=LoRa.LORA, region=LoRa.EU868)
 
@@ -65,15 +60,19 @@ class CTPendpoint:
         self.rtc = RTC()
         self.rtc.init((2022, 7, 21, 19, 47, 0, 0, 0))
 
+        # Set to True for debugging messages
+        self.debug_mode_send = debug_send
+        self.debug_mode_recv = debug_recv
+        self.hard_debug_mode = debug_hard
 
     #
     # BEGIN: Utility functions
     #
 
     # Create a packet from the necessary parameters
-    def __make_packet(self, s_addr, d_addr, seqnum, acknum, pkt_type, is_last, content):
-        # s_addr: bytes, d_addr: bytes, seqnum: int, acknum: int, pkt_type: boolean, is_last: boolean, content: bytes
-        if self.HARD_DEBUG_MODE: print("DEBUG 080:", s_addr, d_addr, seqnum, acknum, pkt_type, is_last, content)
+    def __make_packet(self, s_addr, d_addr, hello, seqnum, ack_required, acknum, pkt_type, is_last, content):
+        # s_addr: bytes, d_addr: bytes, hello: boolean, seqnum: int, ack_required: boolean, acknum: int, pkt_type: boolean, is_last: boolean, content: bytes
+        if self.hard_debug_mode: print("DEBUG 080:", s_addr, d_addr, hello, seqnum, ack_required, acknum, pkt_type, is_last, content)
         flags = 0
         if seqnum == self.ONE:
             flags = flags | (1<<0)
@@ -81,19 +80,25 @@ class CTPendpoint:
             flags = flags | (1<<2)
         if is_last:
             flags = flags | (1<<4)
+        if hello:
+            flags = flags | (1<<5)
         if pkt_type == self.ITS_ACK_PACKET:
             flags = flags | (1<<6)
+        if ack_required:
+            flags = flags | (1<<7)
+
+        if self.debug_mode_send: print ("DEBUG 081: Flags: ", flags)
 
         if (len(content)>0 and (pkt_type == self.ITS_DATA_PACKET)):
             # p = struct.pack(self.PAYLOAD_FORMAT, content)
             p = content
             check = self.__get_checksum(p)
             h = struct.pack(self.HEADER_FORMAT, s_addr, d_addr, flags, check)
-            if self.HARD_DEBUG_MODE: print("DEBUG 096:", h+p)
+            if self.hard_debug_mode: print("DEBUG 096:", h+p)
         else:
             p = b''
             h = struct.pack(self.HEADER_FORMAT, s_addr, d_addr, flags, b'')
-            if self.HARD_DEBUG_MODE: print("DEBUG 100:", h+p)
+            if self.hard_debug_mode: print("DEBUG 100:", h+p)
 
         return h + p
 
@@ -106,28 +111,31 @@ class CTPendpoint:
         seqnum   = self.ONE if ((flags) & 1) & 1 else self.ZERO
         acknum   = self.ONE if (flags >> 2)  & 1 else self.ZERO
         is_last  = (flags >> 4) & 1 == 1
+        hello   = (flags >> 5) & 1 == 1
         pkt_type = (flags >> 6) & 1 == 1
+        ack_required = (flags >> 7) & 1 == 1
+
         if (content == b''):
             payload = b''
         else:
             payload = content
 
-        return sp, dp, seqnum, acknum, pkt_type, is_last, check, payload
+        return sp, dp, hello, seqnum, ack_required, acknum, pkt_type, is_last, check, payload
 
     def __get_checksum(self, data):
         # data: byte -> byte:
-        if self.HARD_DEBUG_MODE: print("DEBUG 123: in get_checksum->", data)
+        if self.hard_debug_mode: print("DEBUG 123: in get_checksum->", data)
         h = hashlib.sha256(data)
         ha = binascii.hexlify(h.digest())
-        if self.HARD_DEBUG_MODE: print("DEBUG 126: in get_checksum->", ha[-3:])
+        if self.hard_debug_mode: print("DEBUG 126: in get_checksum->", ha[-3:])
         return (ha[-3:])
 
     def __debug_printpacket(self, msg, packet, cont=False):
-        sp, dp, seqnum, acknum, pkt_type, is_last, check, content = self.__unpack(packet)
+        sp, dp, hello, seqnum, ack_required, acknum, pkt_type, is_last, check, content = self.__unpack(packet)
         if cont:
-            print ("DEBUG {}: s_a: {}, d_a: {}, seqn: {}, ackn: {}, is-ack: {}, fin: {}, check: {}, cont: {}".format(msg, sp, dp, seqnum, acknum, pkt_type, is_last, check, content))
+            print ("DEBUG {}: s_a: {}, d_a: {}, hello {}, seqn: {}, ack_required: {}, ackn: {}, is-ack: {}, fin: {}, check: {}, cont: {}".format(msg, sp, dp, hello, seqnum, ack_required, acknum, pkt_type, is_last, check, content))
         else:
-            print ("DEBUG {}: s_a: {}, d_a: {}, seqn: {}, ackn: {}, is_ack: {}, fin: {}, check: {}".format(msg, sp, dp, seqnum, acknum, pkt_type, is_last, check))
+            print ("DEBUG {}: s_a: {}, d_a: {}, hello {}, seqn: {}, ack_required: {}, ackn: {}, is_ack: {}, fin: {}, check: {}".format(msg, sp, dp, hello, seqnum, ack_required, acknum, pkt_type, is_last, check))
 
     def __timeout(self, signum, frame):
         raise socket.timeout
@@ -140,24 +148,24 @@ class CTPendpoint:
     def __register_node(self, node_name):
         # Convert to string
         node_name = node_name.decode('utf-8')
-        if self.DEBUG_MODE_RECV: print ("DEBUG RECV 293: HELLO received. Registering node{}".format(node_name))
+        if self.debug_mode_recv: print ("DEBUG RECV 293: HELLO received. Registering node: {}".format(node_name))
         self.DISCOVERED_NODES[node_name] = {}
         # FIXME: If add the datetime the ble callback is called multiple times 
         # self.DISCOVERED_NODES[node_name] = "-".join(map(str, self.rtc.now()[:6]))
 
-    def _csend(self, payload, the_sock, sndr_addr, rcvr_addr, need_ack=True):
+    def _csend(self, payload, the_sock, sndr_addr, rcvr_addr, ack_required=True, hello=False):
 
         # Shortening addresses to last 8 bytes to save space in packet
         sndr_addr = sndr_addr[8:]
         rcvr_addr = rcvr_addr[8:]
-        if self.DEBUG_MODE_SEND: print ("DEBUG SEND 148: sndr_addr, rcvr_addr", sndr_addr, rcvr_addr)
+        if self.debug_mode_send: print ("DEBUG SEND 148: sndr_addr, rcvr_addr", sndr_addr, rcvr_addr)
 
         # computing payload (content) size as "totptbs" = total packets to be sent
         if (len(payload)==0): print ("WARNING csend: payload size == 0... continuing")
         totptbs = int(len(payload) / self.PAYLOAD_SIZE)
         if ((len(payload) % self.PAYLOAD_SIZE)!=0): totptbs += 1
 
-        if self.DEBUG_MODE_SEND: print ("DEBUG SEND 155: Total packages to be send: ", totptbs)  ###
+        if self.debug_mode_send: print ("DEBUG SEND 155: Total packages to be send: ", totptbs)  ###
         timeout_value = 5
 
         # Initialize stats counters
@@ -180,15 +188,15 @@ class CTPendpoint:
         gc.collect()
         for cp in range(totptbs):
 
-            if self.DEBUG_MODE_SEND: print ("DEBUG SEND 178: Packet counter: ", cp)  ###
+            if self.debug_mode_send: print ("DEBUG SEND 178: Packet counter: ", cp)  ###
             last_pkt = True if (cp == (totptbs-1)) else False
 
             # Getting a block of max self.PAYLOAD_SIZE from "payload"
             blocktbs = payload[0:self.PAYLOAD_SIZE]  # Taking self.PAYLOAD_SIZE bytes ToBeSent
             payload  = payload[self.PAYLOAD_SIZE:]   # Shifting the input string
 
-            packet = self.__make_packet(sndr_addr, rcvr_addr, seqnum, acknum, self.ITS_DATA_PACKET, last_pkt, blocktbs)
-            if self.DEBUG_MODE_SEND: self.__debug_printpacket("DEBUG SEND 186: sending packet", packet)
+            packet = self.__make_packet(sndr_addr, rcvr_addr, hello, seqnum, ack_required, acknum, self.ITS_DATA_PACKET, last_pkt, blocktbs)
+            if self.debug_mode_send: self.__debug_printpacket("DEBUG SEND 186: sending packet", packet)
 
             # trying 3 times
             keep_trying = 3
@@ -200,16 +208,16 @@ class CTPendpoint:
                     send_time = time.time()
                     the_sock.send(packet)
 
-                    if need_ack:
+                    if ack_required:
                         # waiting for the ack
                         the_sock.settimeout(timeout_value)  ###
-                        if self.DEBUG_MODE_SEND: print("DEBUG SEND 200: waiting ACK")
+                        if self.debug_mode_send: print("DEBUG SEND 200: waiting ACK")
                         ack = the_sock.recv(self.HEADER_SIZE)
                         recv_time = time.time()
-                        if self.DEBUG_MODE_SEND: print("DEBUG SEND 203: received ack", ack)
+                        if self.debug_mode_send: print("DEBUG SEND 203: received ack", ack)
 
                         # self.__unpack packet information
-                        ack_saddr, ack_daddr, ack_seqnum, ack_acknum, ack_is_ack, ack_final, ack_check, ack_content = self.__unpack(ack)
+                        ack_saddr, ack_daddr, hello, ack_seqnum, ack_required, ack_acknum, ack_is_ack, ack_final, ack_check, ack_content = self.__unpack(ack)
                         if (rcvr_addr == self.ANY_ADDR) or (rcvr_addr == b''):
                             rcvr_addr = ack_saddr       # in case rcvr_addr was self.ANY_ADDR and payload needs many packets
 
@@ -220,15 +228,15 @@ class CTPendpoint:
                             break
                         else:
                             # Received packet not valid
-                            if self.DEBUG_MODE_SEND: print ("ERROR SEND: ACK received not valid")
+                            if self.debug_mode_send: print ("ERROR SEND: ACK received not valid")
                     else:
                         # No need to wait for ACK
                         break
                 except socket.timeout:
-                    if self.DEBUG_MODE_SEND: print("EXCEPTION!! Socket timeout: ", time.time())
+                    if self.debug_mode_send: print("EXCEPTION!! Socket timeout: ", time.time())
 
-                if self.DEBUG_MODE_SEND: self.__debug_printpacket("re-sending packet", packet)
-                if self.DEBUG_MODE_SEND: print ("DEBUG SEND 222: attempt number: ", keep_trying)
+                if self.debug_mode_send: self.__debug_printpacket("re-sending packet", packet)
+                if self.debug_mode_send: print ("DEBUG SEND 222: attempt number: ", keep_trying)
                 stats_psent   += 1
                 stats_retrans += 1
                 keep_trying   -= 1
@@ -247,14 +255,14 @@ class CTPendpoint:
                 estimated_rtt = estimated_rtt * 0.875 + sample_rtt * 0.125
             dev_rtt = 0.75 * dev_rtt + 0.25 * abs(sample_rtt - estimated_rtt)
             timeout_value = (estimated_rtt + 4 * dev_rtt)
-            if self.DEBUG_MODE_SEND: print ("DEBUG SEND 241: setting timeout to", estimated_rtt + 4 * dev_rtt)
+            if self.debug_mode_send: print ("DEBUG SEND 241: setting timeout to", estimated_rtt + 4 * dev_rtt)
 
             # Increment sequence and ack numbers
             seqnum = (seqnum + self.ONE) % 2    # self.ONE if seqnum == self.ZERO else self.ZERO
             acknum = (acknum + self.ONE) % 2    # self.ONE if acknum == self.ZERO else self.ZERO
 
-        if self.DEBUG_MODE_SEND: print ("DEBUG SEND 247: RETURNING tsend")
-        if self.DEBUG_MODE_SEND: print ("DEBUG SEND 248: Retrans: ", stats_retrans)
+        if self.debug_mode_send: print ("DEBUG SEND 247: RETURNING tsend")
+        if self.debug_mode_send: print ("DEBUG SEND 248: Retrans: ", stats_retrans)
 
         # KN: Enabling garbage collection
         gc.enable()
@@ -270,8 +278,8 @@ class CTPendpoint:
         # Shortening addresses to last 8 bytes
         my_addr  = my_addr[8:]
         snd_addr = snd_addr[8:]
-        need_ack = True
-        if self.DEBUG_MODE_RECV: print ("DEBUG RECV 264: my_addr, snd_addr: ", my_addr, snd_addr)
+        ack_required = True
+        if self.debug_mode_recv: print ("DEBUG RECV 264: my_addr, snd_addr: ", my_addr, snd_addr)
 
         # Buffer storing the received data to be returned
         rcvd_data = b''
@@ -290,14 +298,13 @@ class CTPendpoint:
             try:
                 the_sock.setblocking(True)
                 packet = the_sock.recv(self.MAX_PKT_SIZE)
-                if self.DEBUG_MODE_RECV: print ("DEBUG RECV 283: packet received: ", packet)
-                inp_src_addr, inp_dst_addr, inp_seqnum, inp_acknum, is_ack, last_pkt, check, content = self.__unpack(packet)
-                if self.DEBUG_MODE_RECV: print ("DEBUG RECV 286: inp_src_addr {}, inp_dst_addr {}, inp_seqnum {}, inp_acknum {}, is_ack {}, last_pkt {}, check {}, content {}".format(inp_src_addr, inp_dst_addr, inp_seqnum, inp_acknum, is_ack, last_pkt, check, content))
+                if self.debug_mode_recv: print ("DEBUG RECV 283: packet received: ", packet)
+                inp_src_addr, inp_dst_addr, hello, inp_seqnum, inp_ackrequired, inp_acknum, is_ack, last_pkt, check, content = self.__unpack(packet)
+                if self.debug_mode_recv: print ("DEBUG RECV 286: inp_src_addr {}, inp_dst_addr {}, hello {}, inp_seqnum {}, inp_acknum {}, is_ack {}, last_pkt {}, check {}, content {}".format(inp_src_addr, inp_dst_addr, hello, inp_seqnum, inp_acknum, is_ack, last_pkt, check, content))
 
                 # If destination address is broadcast and mensage hello, then no send acknowledgement package
-                if (inp_dst_addr == self.ANY_ADDR) and (content == b'HELLO'):
-                    need_ack = False
-                    if self.DEBUG_MODE_RECV: print ("DEBUG RECV 294: HELLO received. No need to send ACK")
+                if (hello):
+                    ack_required = False
                     self.__register_node(inp_src_addr)
 
                 # getting sender address, if unknown, with the first packet
@@ -306,31 +313,31 @@ class CTPendpoint:
                     SENDER_ID_KNOWN = True
                 # Checking if a "valid" packet... i.e., either for me or broadcast
                 if (inp_dst_addr != my_addr) and (inp_dst_addr != self.ANY_ADDR):
-                    if self.DEBUG_MODE_RECV: print("RECV DISCARDED received packet not for me!!")
+                    if self.debug_mode_recv: print("RECV DISCARDED received packet not for me!!")
                     continue
             except socket.timeout:
-                if self.DEBUG_MODE_RECV: print ("RECV EXCEPTION!! Socket timeout: ", time.time())
+                if self.debug_mode_recv: print ("RECV EXCEPTION!! Socket timeout: ", time.time())
                 continue
             except Exception as e:
                 print (" RECV EXCEPTION!! Packet not valid: ", e)
                 continue
 
-            if self.DEBUG_MODE_RECV: print("DEBUG RECV 300: get_checksum(content)", self.__get_checksum(content))
+            if self.debug_mode_recv: print("DEBUG RECV 300: get_checksum(content)", self.__get_checksum(content))
             checksum_OK = (check == self.__get_checksum(content))
 
             if (checksum_OK) and (next_acknum == inp_acknum) and (snd_addr == inp_src_addr):
                 rcvd_data += content
                 last_check = check
 
-                if need_ack:
+                if ack_required:
                     # Sending ACK
                     next_acknum = (inp_acknum + self.ONE) % 2
-                    ack_segment = self.__make_packet(my_addr, inp_src_addr, inp_seqnum, next_acknum, self.ITS_ACK_PACKET, last_pkt, b'')
-                    if self.DEBUG_MODE_RECV: print ("DEBUG RECV 310: Forwarded package", self.p_resend)   ###
+                    ack_segment = self.__make_packet(my_addr, inp_src_addr, hello, inp_seqnum, ack_required, next_acknum, self.ITS_ACK_PACKET, last_pkt, b'')
+                    if self.debug_mode_recv: print ("DEBUG RECV 310: Forwarded package", self.p_resend)   ###
                     self.p_resend = self.p_resend + 1   ###
                     the_sock.setblocking(False)
                     the_sock.send(ack_segment)
-                    if self.DEBUG_MODE_RECV: print("DEBUG RECV 314: Sent ACK", ack_segment)
+                    if self.debug_mode_recv: print("DEBUG RECV 314: Sent ACK", ack_segment)
                     if (last_pkt):
                         break
                 else:
@@ -339,21 +346,21 @@ class CTPendpoint:
                 # KN: Handlig ACK lost
                 rcvd_data += content
 
-                if need_ack:
+                if ack_required:
                     # KN: Re-Sending ACK
                     next_acknum = (inp_acknum + self.ZERO) % 2
-                    ack_segment = self.__make_packet(my_addr, inp_src_addr, inp_seqnum, next_acknum, self.ITS_ACK_PACKET, last_pkt, b'')
+                    ack_segment = self.__make_packet(my_addr, inp_src_addr, hello, inp_seqnum, ack_required, next_acknum, self.ITS_ACK_PACKET, last_pkt, b'')
                     self.p_resend = self.p_resend -1 #CHANGED
-                    if self.DEBUG_MODE_RECV: print ("DEBUG RECV 325: Forwarded package", self.p_resend)   ###
+                    if self.debug_mode_recv: print ("DEBUG RECV 325: Forwarded package", self.p_resend)   ###
                     the_sock.setblocking(False)
                     the_sock.send(ack_segment)
-                    if self.DEBUG_MODE_RECV: print("DEBUG RECV 328: re-sending ACK", ack_segment)
+                    if self.debug_mode_recv: print("DEBUG RECV 328: re-sending ACK", ack_segment)
                     if (last_pkt):
                         break
                 else:
                     break
             else:
-                if self.DEBUG_MODE_RECV: print ("DEBUG RECV 332: packet not valid", packet)
+                if self.debug_mode_recv: print ("DEBUG RECV 332: packet not valid", packet)
 
         # KN: Enabling garbage collection
         last_check = 0
@@ -369,8 +376,8 @@ class CTPendpoint:
         return self.my_addr, rcvr_addr, stats_retrans, FAILED
 
     def hello(self, dest=ANY_ADDR):
-        if self.DEBUG_MODE_SEND: print("loractp: send hello to... ", dest)
-        rcvr_addr, stats_psent, stats_retrans, FAILED = self._csend(b"HELLO", self.s, self.lora_mac, dest, need_ack=False)
+        if self.debug_mode_send: print("loractp: send hello to... ", dest)
+        rcvr_addr, stats_psent, stats_retrans, FAILED = self._csend(b"HELLO", self.s, self.lora_mac, dest, ack_required=False, hello=True)
         return self.my_addr, rcvr_addr, stats_retrans, FAILED
 
     def listen(self, sender=ANY_ADDR):

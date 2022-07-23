@@ -8,6 +8,7 @@ import _thread
 
 NODE_NAME = ''
 DISCOVERED_NODES = {}
+SENDING_DATA = False
 
 ctpc = loractp.CTPendpoint()
 
@@ -73,9 +74,11 @@ def setup_ble(node_name):
     char3_callback = char3.callback(trigger=Bluetooth.CHAR_READ_EVENT, handler=ble_connect_to_lora_node)
 
 def send_hello(ctpc, delay, id):
+    global SENDING_DATA
     while True:
         time.sleep(delay)
-        myaddr, rcvraddr, quality, status = ctpc.hello()
+        if not SENDING_DATA:
+            myaddr, rcvraddr, quality, status = ctpc.hello()
 
 def main():
     global NODE_NAME
@@ -100,13 +103,11 @@ def main():
 
     # Wait for lora nodes response
     while True:
-        # print("Scanning for lora nodes...")
         rcvd_data, snd_addr = ctpc.recvit()
         print("Received from {}: {}".format(snd_addr.decode('utf-8'), rcvd_data))
-        # print("Sender: LoRa connection from {} to me ({}) {} ".format(rcvraddr, myaddr, status))
         DISCOVERED_NODES = ctpc.get_discovered_nodes()
+        print(DISCOVERED_NODES)
         time.sleep(5)
-        # print("Scanning done!")
 
 
 if __name__ == "__main__":
