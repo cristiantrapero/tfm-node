@@ -10,7 +10,7 @@ NODE_NAME = ''
 DISCOVERED_NODES = {}
 SENDING_DATA = False
 
-ctpc = loractp.CTPendpoint()
+ctpc = loractp.CTPendpoint(debug_send=True, debug_recv=True)
 
 def ble_connection_handler(bt_o):
     events = bt_o.events()
@@ -20,31 +20,42 @@ def ble_connection_handler(bt_o):
     elif events & Bluetooth.CLIENT_DISCONNECTED:
         print("BLE disconnected!")
 
-def ble_name_callback(chr, arg1=None):
+def ble_name_callback(chr, data):
     global NODE_NAME
-    events = chr.events()
+    events, value = data
     if  events & Bluetooth.CHAR_WRITE_EVENT:
         print("BLE WRITE node name")
-        print(chr.value().decode('utf-8'))
-        NODE_NAME = chr.value().decode('utf-8')
+        try:
+            NODE_NAME = value.decode('utf-8')
+            print(NODE_NAME)
+        except Excection as ex:
+            print(ex)
     else:
         print("BLE READ node name: {}".format(NODE_NAME))
         return NODE_NAME
 
-def ble_lora_nodes_discovered_callback(chr, arg1=None):
+def ble_lora_nodes_discovered_callback(chr, data=None):
     events = chr.events()
     if events & Bluetooth.CHAR_READ_EVENT:
         nodes = get_discovered_nodes()
         print("BLE READ lora nodes {}".format(nodes))
         return nodes
 
-def ble_connect_to_lora_node(chr, arg1=None):
-    events = chr.events()
+def ble_send_data_over_lora_callback(chr, data):
+    global SENDING_DATA
+    events, value = data
     if events & Bluetooth.CHAR_WRITE_EVENT:
-        print("BLE WRITE connect to lora node")
-        node_to_connect = chr.value().decode('utf-8')
-        print(node_to_connect)
-        ctpc.connect(node_to_connect)
+        SENDING_DATA = True
+        try:
+            node_to_connect = value
+            print(node_to_connect)
+            message = b'Hola test1'
+            addr, quality, result = ctpc.sendit(node_to_connect, message)
+            print(result)
+            return result
+        except Exception as ex:
+            print("Exception: {}".format(ex))
+        SENDING_DATA = False
     else:
         print("BLE READ connect to lora node")
 
@@ -66,12 +77,12 @@ def setup_ble(node_name):
     char1_callback = char1.callback(trigger=Bluetooth.CHAR_READ_EVENT, handler=ble_name_callback)
     # Characteristic 2: Get discovered lora nodes
     char2 = service1.characteristic(uuid=b'608b5e89c2ba4334')
-    char2_callback = char2.callback(trigger=Bluetooth.CHAR_READ_EVENT, handler=ble_lora_nodes_discovered_callback)
+    char2_callback = char2.callback(trigger=Bluetooth.CHAR_READ_EVENT | Bluetooth.CHAR_WRITE_EVENT, handler=ble_lora_nodes_discovered_callback)
 
     # Service 2: Manage lora conections
     service2 = bluetooth.service(uuid=b'c2bf80e7ba545445', isprimary=True, nbr_chars=1)
     char3 = service2.characteristic(uuid=b'bb73a3bb46c35665')
-    char3_callback = char3.callback(trigger=Bluetooth.CHAR_READ_EVENT, handler=ble_connect_to_lora_node)
+    char3_callback = char3.callback(trigger=Bluetooth.CHAR_WRITE_EVENT, handler=ble_send_data_over_lora_callback)
 
 def send_hello(ctpc, delay, id):
     global SENDING_DATA
@@ -80,6 +91,7 @@ def send_hello(ctpc, delay, id):
         if not SENDING_DATA:
             myaddr, rcvraddr, quality, status = ctpc.hello()
 
+# 70b3d5499d2122ae
 def main():
     global NODE_NAME
     global DISCOVERED_NODES
@@ -98,16 +110,15 @@ def main():
 
     gc.enable()
 
-    # Send hello to others nodes in a thread every 10
-    _thread.start_new_thread(send_hello, (ctpc, 10, 1))
+    # Send hello to others nodes in a thread every 60 seconds
+    threads = _thread.start_new_thread(send_hello, (ctpc, 60, 1))
 
-    # Wait for lora nodes response
     while True:
         rcvd_data, snd_addr = ctpc.recvit()
         print("Received from {}: {}".format(snd_addr.decode('utf-8'), rcvd_data))
         DISCOVERED_NODES = ctpc.get_discovered_nodes()
-        print(DISCOVERED_NODES)
-        time.sleep(5)
+        print("Discovered nodes: ", DISCOVERED_NODES)
+        # time.sleep(5)
 
 
 if __name__ == "__main__":

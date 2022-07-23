@@ -52,8 +52,8 @@ class CTPendpoint:
         self.lora = LoRa(mode=LoRa.LORA, region=LoRa.EU868)
 
         # Get lora mac address (device EUI)
-        self.lora_mac = binascii.hexlify(network.LoRa().mac())
-        self.my_addr  = self.lora_mac[8:]
+        self.lora_mac = binascii.hexlify(network.LoRa().mac()).upper()
+        self.my_addr  = self.lora_mac[8:].upper()
 
         # Create a raw LoRa socket
         self.s = socket.socket(socket.AF_LORA, socket.SOCK_RAW)
@@ -157,7 +157,7 @@ class CTPendpoint:
 
         # Shortening addresses to last 8 bytes to save space in packet
         sndr_addr = sndr_addr[8:]
-        rcvr_addr = rcvr_addr[8:]
+        rcvr_addr = rcvr_addr[:8]
         if self.debug_mode_send: print ("DEBUG SEND 148: sndr_addr, rcvr_addr", sndr_addr, rcvr_addr)
 
         # computing payload (content) size as "totptbs" = total packets to be sent
@@ -217,7 +217,11 @@ class CTPendpoint:
                         if self.debug_mode_send: print("DEBUG SEND 203: received ack", ack)
 
                         # self.__unpack packet information
-                        ack_saddr, ack_daddr, hello, ack_seqnum, ack_required, ack_acknum, ack_is_ack, ack_final, ack_check, ack_content = self.__unpack(ack)
+                        try:
+                            ack_saddr, ack_daddr, hello, ack_seqnum, ack_required, ack_acknum, ack_is_ack, ack_final, ack_check, ack_content = self.__unpack(ack)
+                        except Exception as e:
+                            print("ERROR ACKKKKKKKK 208:", e)
+                            
                         if (rcvr_addr == self.ANY_ADDR) or (rcvr_addr == b''):
                             rcvr_addr = ack_saddr       # in case rcvr_addr was self.ANY_ADDR and payload needs many packets
 
@@ -277,7 +281,7 @@ class CTPendpoint:
 
         # Shortening addresses to last 8 bytes
         my_addr  = my_addr[8:]
-        snd_addr = snd_addr[8:]
+        snd_addr = snd_addr[:8]
         ack_required = True
         if self.debug_mode_recv: print ("DEBUG RECV 264: my_addr, snd_addr: ", my_addr, snd_addr)
 
@@ -399,10 +403,10 @@ class CTPendpoint:
         return rcvd_data, snd_addr
 
     def get_lora_mac(self):
-        return (self.lora_mac).upper().decode('utf-8')
+        return (self.lora_mac).decode('utf-8')
 
     def get_my_addr(self):
-        return (self.my_addr).upper().decode('utf-8')
+        return (self.my_addr).decode('utf-8')
 
     def get_discovered_nodes(self):
         return self.DISCOVERED_NODES
