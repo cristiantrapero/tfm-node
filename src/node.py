@@ -9,16 +9,21 @@ import _thread
 NODE_NAME = ''
 DISCOVERED_NODES = {}
 SENDING_DATA = False
+BLE_CONNECTED = False
+LORA_CONNECTED = False
 
 ctpc = loractp.CTPendpoint(debug_send=True, debug_recv=True)
 
 def ble_connection_handler(bt_o):
+    global BLE_CONNECTED
     events = bt_o.events()
     if events & Bluetooth.CLIENT_CONNECTED:
         print("BLE connected!")
+        BLE_CONNECTED = True
 
     elif events & Bluetooth.CLIENT_DISCONNECTED:
         print("BLE disconnected!")
+        BLE_CONNECTED = False
 
 def ble_name_callback(chr, data):
     global NODE_NAME
@@ -43,9 +48,11 @@ def ble_lora_nodes_discovered_callback(chr, data=None):
 
 def ble_send_data_over_lora_callback(chr, data):
     global SENDING_DATA
+    global LORA_CONNECTED
     events, value = data
     if events & Bluetooth.CHAR_WRITE_EVENT:
         SENDING_DATA = True
+        LORA_CONNECTED = True
         try:
             node_to_connect = value
             print(node_to_connect)
@@ -55,7 +62,9 @@ def ble_send_data_over_lora_callback(chr, data):
             return result
         except Exception as ex:
             print("Exception: {}".format(ex))
+            LORA_CONNECTED = False
         SENDING_DATA = False
+        LORA_CONNECTED = False
     else:
         print("BLE READ connect to lora node")
 
@@ -91,20 +100,30 @@ def send_hello(ctpc, delay, id):
         if not SENDING_DATA:
             myaddr, rcvraddr, quality, status = ctpc.hello()
 
-# 70b3d5499d2122ae
+def change_led_status():
+    while True:
+        if not LORA_CONNECTED and not BLE_CONNECTED:
+            pycom.rgbled(0x7f0000) #red
+        if not LORA_CONNECTED and BLE_CONNECTED:
+            pycom.rgbled(0x0000FF) #blue
+        if LORA_CONNECTED and not BLE_CONNECTED:
+            pycom.rgbled(0xFFFF00) #yellow
+        if LORA_CONNECTED and BLE_CONNECTED:
+            pycom.rgbled(0x007f00) #green
+        time.sleep(1)
+
 def main():
     global NODE_NAME
     global DISCOVERED_NODES
 
     my_lora_mac = ctpc.get_lora_mac()
     my_addr = ctpc.get_my_addr()
-    my_node_name = "NODE-{}".format(my_addr)
-    NODE_NAME = my_node_name
+    NODE_NAME = "NODE-{}".format(my_addr)
 
-    setup_ble(my_node_name)
+    setup_ble(NODE_NAME)
 
     print("Setup BLE done!")
-    print("I'm the node: {}".format(my_node_name))
+    print("I'm the node: {}".format(NODE_NAME))
     print("My lora UID is: {}".format(my_lora_mac))
     print("My addr: {}".format(my_addr))
 
@@ -112,6 +131,9 @@ def main():
 
     # Send hello to others nodes in a thread every 60 seconds
     threads = _thread.start_new_thread(send_hello, (ctpc, 60, 1))
+
+    # Change LED status every second
+    threads = _thread.start_new_thread(change_led_status, ())
 
     while True:
         rcvd_data, snd_addr = ctpc.recvit()
