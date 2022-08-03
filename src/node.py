@@ -4,6 +4,8 @@ import pycom
 import gc
 import time
 import ujson
+import ucrypto
+import math
 import _thread
 
 NODE_NAME = ''
@@ -12,7 +14,13 @@ SENDING_DATA = False
 BLE_CONNECTED = False
 LORA_CONNECTED = False
 
-ctpc = loractp.CTPendpoint(debug_send=True, debug_recv=True)
+ctpc = loractp.CTPendpoint(debug_send=False, debug_recv=False)
+
+# This is for semap
+baton = _thread.allocate_lock()
+
+# Enable garbage collector
+gc.enable()
 
 def ble_connection_handler(bt_o):
     global BLE_CONNECTED
@@ -55,11 +63,14 @@ def ble_send_data_over_lora_callback(chr, data):
         LORA_CONNECTED = True
         try:
             node_to_connect = value
-            print(node_to_connect)
-            message = b'Hola test1'
+            value = random_in_range()
+            message = ujson.dumps({'value': value, 'node': NODE_NAME}).encode()
+            print('Send value {} to node {}'.format(value, node_to_connect))
+            # baton.acquire()
             addr, quality, result = ctpc.sendit(node_to_connect, message)
-            print(result)
-            return result
+            # baton.release()
+            print('Result after send: {}, {}, {}'.format(addr, quality, result))
+
         except Exception as ex:
             print("Exception: {}".format(ex))
             LORA_CONNECTED = False
@@ -71,6 +82,11 @@ def ble_send_data_over_lora_callback(chr, data):
 def get_discovered_nodes():
     global DISCOVERED_NODES
     return ujson.dumps(DISCOVERED_NODES)
+
+def random_in_range(l=0,h=1000):
+    r1 = ucrypto.getrandbits(32)
+    r2 = ((r1[0]<<24)+(r1[1]<<16)+(r1[2]<<8)+r1[3])/4294967295.0
+    return math.floor(r2*h+l)
 
 def setup_ble(node_name):
     bluetooth = Bluetooth()
@@ -110,7 +126,24 @@ def change_led_status():
             pycom.rgbled(0xFFFF00) #yellow
         if LORA_CONNECTED and BLE_CONNECTED:
             pycom.rgbled(0x007f00) #green
+            # for cycle in range(5):
+            #     pycom.rgbled(0x007f00) #green
+            #     time.sleep(0.1)
+            #     pycom.rgbled(0x000000) #off
         time.sleep(1)
+
+def receive_data():
+    global LORA_CONNECTED
+    while True:
+        try:
+            baton.acquire()
+            rcvd_data, snd_addr = ctpc.recvit()
+            baton.release()
+            print("Received from {}: {}".format(snd_addr.decode('utf-8'), rcvd_data))
+            DISCOVERED_NODES = ctpc.get_discovered_nodes()
+            print("Discovered nodes: ", DISCOVERED_NODES)
+        except Exception as ex:
+            print("Exception: {}".format(ex))
 
 def main():
     global NODE_NAME
@@ -130,18 +163,17 @@ def main():
     gc.enable()
 
     # Send hello to others nodes in a thread every 60 seconds
-    threads = _thread.start_new_thread(send_hello, (ctpc, 60, 1))
+    _thread.start_new_thread(send_hello, (ctpc, 60, 1))
 
     # Change LED status every second
-    threads = _thread.start_new_thread(change_led_status, ())
+    _thread.start_new_thread(change_led_status, ())
+
+    # Thread for receive the data
+    _thread.start_new_thread(receive_data, ())
 
     while True:
-        rcvd_data, snd_addr = ctpc.recvit()
-        print("Received from {}: {}".format(snd_addr.decode('utf-8'), rcvd_data))
-        DISCOVERED_NODES = ctpc.get_discovered_nodes()
-        print("Discovered nodes: ", DISCOVERED_NODES)
-        # time.sleep(5)
-
+        time.sleep(1)
+        gc.collect()
 
 if __name__ == "__main__":
     main()
