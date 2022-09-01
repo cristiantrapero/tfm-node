@@ -10,19 +10,16 @@ This is implemented for the __Pycom LoPy 4__. The LoPy setups a BLE server to be
 3. Clone this repository: `git clone https://github.com/cristiantrapero/tfm-node.git`
 4. Open this project in Atom
 5. Connect the LoPy 4 to the computer USB
-6. List the serial ports with the Pymakr bar: `All commands -> Pymakr -> Extra -> List Serial Ports`
-7. Change the `"address": "COM5"` in the pymakr.conf file to your corresponding setial port listed
-8. Run the Pymakr command: `Upload`
-9. Wait until load the project in the LoPy 4
-10. Open the `node.py` file in the Atom editor and select `Run` in the Pymakr bar.
-11. Connect the Android application to the sender node and take the image and send it. The application is located in: https://github.com/cristiantrapero/tfm-android
+6. Select `Upload project to device`
+7. Wait until load the project in the LoPy 4
+8. Open the `main.py` file in the Atom editor and select `Run selected file` in the Pymakr bar.
+9. Connect the Android application to the sender node and take the image and send it. The application is located in: https://github.com/cristiantrapero/tfm-android
 
 # Files
 The repository is structured as follow:
 
-- `src`: Contains the source code of the project concerning the implementation of the sender and receiver.
-  - boot.py: Disables WiFi to avoid interferences
-  - node.py: Main function. Setup BLE, LoRa and all necessary.
+- boot.py: Disables WiFi to avoid interferences.
+- main.py: Main function. Setup BLE, LoRa and all necessary to run the node.
 - `lib`: LoRaCTP protocol library.
   - loractp.py: Contains the Lora Content Transfer Protocol (loractp) with his API.
 - `pymakr.conf`: Pymakr configuration file. **Is necessary change `"address": "COM5"` setting**.
