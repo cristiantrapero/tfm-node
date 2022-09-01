@@ -81,6 +81,7 @@ def ble_send_data_over_lora_callback(chr, data):
 
 def get_discovered_nodes():
     global DISCOVERED_NODES
+    DISCOVERED_NODES = ctpc.get_discovered_nodes()
     return ujson.dumps(DISCOVERED_NODES)
 
 def random_in_range(l=0,h=1000):
@@ -97,9 +98,11 @@ def setup_ble(node_name):
     # Service 1: Obtain node data
     # nbr_chars indicate the number of characteristics to include
     service1 = bluetooth.service(uuid=b'21f89e3146781221', isprimary=True, nbr_chars=2)
+
     # Characteristic 1: Node name
     char1 = service1.characteristic(uuid=b'fc9dbf8be8903223', value=NODE_NAME)
     char1_callback = char1.callback(trigger=Bluetooth.CHAR_READ_EVENT, handler=ble_name_callback)
+
     # Characteristic 2: Get discovered lora nodes
     char2 = service1.characteristic(uuid=b'608b5e89c2ba4334')
     char2_callback = char2.callback(trigger=Bluetooth.CHAR_READ_EVENT | Bluetooth.CHAR_WRITE_EVENT, handler=ble_lora_nodes_discovered_callback)
@@ -133,21 +136,18 @@ def change_led_status():
         time.sleep(1)
 
 def receive_data():
-    global LORA_CONNECTED
     while True:
         try:
             baton.acquire()
             rcvd_data, snd_addr = ctpc.recvit()
             baton.release()
             print("Received from {}: {}".format(snd_addr.decode('utf-8'), rcvd_data))
-            DISCOVERED_NODES = ctpc.get_discovered_nodes()
-            print("Discovered nodes: ", DISCOVERED_NODES)
+            print("Discovered nodes: ", get_discovered_nodes())
         except Exception as ex:
             print("Exception: {}".format(ex))
 
 def main():
     global NODE_NAME
-    global DISCOVERED_NODES
 
     my_lora_mac = ctpc.get_lora_mac()
     my_addr = ctpc.get_my_addr()
