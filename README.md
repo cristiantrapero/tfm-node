@@ -1,6 +1,8 @@
 # Una solución basada en LoRa para comunicaciones multimedia en entornos extremos
-
 The main objective of this work will be to develop a communications system that allows multimedia traffic of any size to be sent over long distances using the **LoRa RAW** (pure LoRa, no LoRaWAN) channel.
+
+# BLE version
+![Bluetooth LE version](https://upload.wikimedia.org/wikipedia/commons/thumb/2/20/Bluetooth_Smart_Logo.svg/241px-Bluetooth_Smart_Logo.svg.png)
 
 This is implemented for the __Pycom LoPy 4__. The LoPy setups a BLE server to be able to connect to an Android application to manage the sending of multimedia files and once receive, it is forwarded to another LoPy 4.
 
@@ -22,7 +24,6 @@ The repository is structured as follow:
 - main.py: Main function. Setup BLE, LoRa and all necessary to run the node.
 - `lib`: LoRaCTP protocol library.
   - loractp.py: Contains the Lora Content Transfer Protocol (loractp) with his API.
-- `pymakr.conf`: Pymakr configuration file. **Is necessary change `"address": "COM5"` setting**.
 
 ## Firmware versions
 LoPy4 firmware version:
