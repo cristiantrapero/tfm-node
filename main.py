@@ -11,7 +11,6 @@ import socket
 import database
 
 # Set the LED to green
-global LORA_CONNECTED
 LORA_CONNECTED = False
 
 # This is for semaphore
@@ -110,6 +109,8 @@ class Node:
         """
         Send hello message to the LoRa network
         """
+        global LORA_CONNECTED
+
         LORA_CONNECTED = True
         sender, receiver, stats, quality, status = ctpc.hello()
         LORA_CONNECTED = False
@@ -130,6 +131,10 @@ class Node:
         """
         Send a message to the LoRa node
         """
+        global LORA_CONNECTED
+
+        LORA_CONNECTED = True
+
         data = request.GetPostedJSONObject()
         try:
             address = data['address'].encode()
@@ -148,6 +153,7 @@ class Node:
             result = "success"
             if lora_result == -1:
                 result = "fail"
+            LORA_CONNECTED = False
 
             return request.Response.ReturnJSON(200, {
                 "receiver": receiver.decode(),
@@ -171,6 +177,8 @@ class Node:
         """
         Thread method to send a hello message to the LoRa network
         """
+        global LORA_CONNECTED
+
         while True:
             LORA_CONNECTED = True
             baton.acquire()
@@ -185,18 +193,21 @@ class Node:
         """
         while True:
             connected_clients = wifi.has_connected_clients()
-            if not LORA_CONNECTED and not connected_clients:
-                pycom.rgbled(0x7f0000) #red
-            if not LORA_CONNECTED and connected_clients:
-                pycom.rgbled(0x0000FF) #blue
             if LORA_CONNECTED:
                 pycom.rgbled(0x007f00) #green
-            sleep(1)
+            elif not LORA_CONNECTED and connected_clients:
+                pycom.rgbled(0x0000FF) #blue
+            else:
+                pycom.rgbled(0x7f0000) #red
+
+            sleep(0.2)
 
     def receive_lora_data(self):
         """
         Thread method to receive the LoRa node messages
         """
+        global LORA_CONNECTED
+
         while True:
             try:
                 # baton.acquire()
@@ -251,7 +262,7 @@ mws2.SetEmbeddedConfig()
 #mws2.SetNormalConfig()
 # Set server parameters
 # mws2.BufferSlotSize = 8*1024
-# mws2.MaxRequestContentLength = 8*1024*1024
+mws2.MaxRequestContentLength = 8*1024*1024
 # mws2.RequestsTimeoutSec = 10
 mws2.StartManaged()
 
