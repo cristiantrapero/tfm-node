@@ -56,7 +56,8 @@ class CTPendpoint:
         self.my_addr  = self.lora_mac[8:].upper()
 
         # Create a raw LoRa socket
-        self.s = socket.socket(socket.AF_LORA, socket.SOCK_RAW)
+        self.send = socket.socket(socket.AF_LORA, socket.SOCK_RAW)
+        self.recv = socket.socket(socket.AF_LORA, socket.SOCK_RAW)
         self.rtc = RTC()
         self.rtc.init((2022, 7, 21, 19, 47, 0, 0, 0))
 
@@ -376,17 +377,17 @@ class CTPendpoint:
 
     def connect(self, dest=ANY_ADDR):
         print("loractp: connecting to... ", dest)
-        rcvr_addr, stats_psent, stats_retrans, FAILED = self._csend(b"CONNECT", self.s, self.lora_mac, dest)
+        rcvr_addr, stats_psent, stats_retrans, FAILED = self._csend(b"CONNECT", self.send, self.lora_mac, dest)
         return self.my_addr, rcvr_addr, stats_retrans, FAILED
 
     def hello(self, dest=ANY_ADDR):
         if self.debug_mode_send: print("loractp: send hello to... ", dest)
-        rcvr_addr, stats_psent, stats_retrans, FAILED = self._csend(b"HELLO", self.s, self.lora_mac, dest, ack_required=False, hello=True)
+        rcvr_addr, stats_psent, stats_retrans, FAILED = self._csend(b"HELLO", self.send, self.lora_mac, dest, ack_required=False, hello=True)
         return self.my_addr, rcvr_addr, stats_retrans, FAILED
 
     def listen(self, sender=ANY_ADDR):
         print("loractp: listening for...", sender)
-        rcvd_data, snd_addr = self._crecv(self.s, self.lora_mac, sender)
+        rcvd_data, snd_addr = self._crecv(self.recv, self.lora_mac, sender)
         if (rcvd_data==b"CONNECT"):
             return self.my_addr, snd_addr, 0
         elif (rcvd_data==b"HELLO"):
@@ -394,12 +395,12 @@ class CTPendpoint:
         else:
             return self.my_addr, snd_addr, -1
 
-    def sendit(self, addr=ANY_ADDR, payload=b''):
-        rcvr_addr, stats_psent, stats_retrans, FAILED = self._csend(payload, self.s, self.lora_mac, addr)
+    def sendit(self, addr=ANY_ADDR, payload=b'', ack_required=True):
+        rcvr_addr, stats_psent, stats_retrans, FAILED = self._csend(payload, self.send, self.lora_mac, addr, ack_required)
         return rcvr_addr, stats_retrans, FAILED
 
     def recvit(self, addr=ANY_ADDR):
-        rcvd_data, snd_addr = self._crecv(self.s, self.lora_mac, addr)
+        rcvd_data, snd_addr = self._crecv(self.recv, self.lora_mac, addr)
         return rcvd_data, snd_addr
 
     def get_lora_mac(self):
