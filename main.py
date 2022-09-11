@@ -1,6 +1,6 @@
-from network        import WLAN
-from time           import sleep
-from MicroWebSrv2   import *
+from network            import WLAN
+from time               import sleep
+from lib.MicroWebSrv2   import *
 import loractp
 import pycom
 import gc
@@ -133,7 +133,7 @@ class Node:
         data = request.GetPostedJSONObject()
         content = request.Content
         print(content)
-    
+
         try:
             address = data['address'].encode()
             message = ujson.dumps(data['message']).encode()
@@ -156,6 +156,14 @@ class Node:
         except Exception as ex:
             print(ex)
             return request.Response.ReturnJSON(500, {"status" : "You have to send a JSON with address, message and broadcast"})
+
+    @WebRoute(DELETE, '/messages')
+    def delete_messages(microWebSrv2, request):
+        """
+        Delete the messages
+        """
+        database.delete_messages()
+        return request.Response.ReturnOkJSON({"status" : "success"})
 
     def send_lora_hello(self, delay, id):
         """
@@ -191,17 +199,16 @@ class Node:
             try:
                 # baton.acquire()
                 LORA_CONNECTED = True
-                print("Waiting for LoRa message...")
                 rcvd_data, snd_addr = self.ctpc.recvit()
                 print("Received from {}: {}".format(snd_addr, rcvd_data))
                 # Save sender and message in file
                 database.save_message(snd_addr, rcvd_data)
-            
+
                 LORA_CONNECTED = False
                 # baton.release()
             except Exception as ex:
                 print("Exception: {}".format(ex))
-    
+
 # Create LoRa CTPC endpoint
 ctpc = loractp.CTPendpoint(debug_send=False, debug_recv=False)
 node_name = "NODE-{}".format(ctpc.get_my_addr())
@@ -237,10 +244,6 @@ _thread.start_new_thread(node.receive_lora_data, ())
 # Instanciates the MicroWebSrv2 class
 mws2 = MicroWebSrv2()
 
-# Loads the PyhtmlTemplate module globally and configure it
-#pyhtmlMod = mws2.LoadModule('PyhtmlTemplate')
-#pyhtmlMod.ShowDebug = True
-
 # For embedded MicroPython, use a very light configuration
 mws2.SetEmbeddedConfig()
 
@@ -254,6 +257,4 @@ try :
         sleep(0.5)
 except KeyboardInterrupt:
     mws2.Stop()
-    for i in THREAD_KILL_SWITCH:
-        THREAD_KILL_SWITCH[i] = True
     print("Stop node")
