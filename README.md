@@ -1,10 +1,9 @@
 # Una solución basada en LoRa para comunicaciones multimedia en entornos extremos
 The main objective of this work will be to develop a communications system that allows multimedia traffic of any size to be sent over long distances using the **LoRa RAW** (pure LoRa, no LoRaWAN) channel.
 
-# WiFi version
-![WiFi version](https://upload.wikimedia.org/wikipedia/commons/thumb/a/ae/WiFi_Logo.svg/320px-WiFi_Logo.svg.png)
+#  WiFi version <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/a/ae/WiFi_Logo.svg/320px-WiFi_Logo.svg.png" width="50">
 
-This is implemented for the __Pycom LoPy 4__. The LoPy setups a BLE server to be able to connect to an Android application to manage the sending of multimedia files and once receive, it is forwarded to another LoPy 4.
+This is implemented for the __Pycom LoPy 4__. The LoPy setups a WiFi Access Point to be able to connect to an Android application to manage the sending of multimedia files and once receive, it is forwarded to another LoPy 4.
 
 # How to setup the application
 1. Install **NojeJS** depending on the operating system you have using https://nodejs.org/es/download/ or with NVM https://github.com/nvm-sh/nvm
@@ -22,8 +21,10 @@ The repository is structured as follow:
 
 - boot.py: Disables WiFi to avoid interferences.
 - main.py: Main function. Setup BLE, LoRa and all necessary to run the node.
-- `lib`: LoRaCTP protocol library.
-  - loractp.py: Contains the Lora Content Transfer Protocol (loractp) with his API.
+- www: Folder that contains html files.
+- `lib`:
+  - loractp.py: Contains the Lora Content Transfer Protocol (LoRaCTP) with his API.
+- `MicroWebSrv2`: HTTP Web server library. Github: https://github.com/jczic/MicroWebSrv2
 
 ## Firmware versions
 LoPy4 firmware version:
