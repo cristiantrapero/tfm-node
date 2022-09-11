@@ -1,6 +1,6 @@
 import ujson
-from machine import RTC
-
+from machine    import RTC
+from time       import time
 class FileHandler:
     def __init__(self):
         self.file_path = '/flash/database.json'
@@ -41,9 +41,12 @@ class FileHandler:
             return []
 
     def save_message(self, sender, message):
-        timestamp = RTC().now()
+        #timestamp = RTC().now()
+        timestamp = time()
         messages = self.get_messages()
+        id = len(messages) + 1
         messages.append({
+            'id': id,
             'sender': sender,
             'message': message,
             'time': timestamp

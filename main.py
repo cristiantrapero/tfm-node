@@ -111,7 +111,7 @@ class Node:
         Send hello message to the LoRa network
         """
         LORA_CONNECTED = True
-        myaddr, rcvraddr, quality, status = ctpc.hello()
+        sender, receiver, stats, quality, status = ctpc.hello()
         LORA_CONNECTED = False
         if status == 0:
             return request.Response.ReturnJSON(200, {"status" : "success"})
@@ -131,9 +131,6 @@ class Node:
         Send a message to the LoRa node
         """
         data = request.GetPostedJSONObject()
-        content = request.Content
-        print(content)
-
         try:
             address = data['address'].encode()
             message = ujson.dumps(data['message']).encode()
@@ -146,13 +143,18 @@ class Node:
 
             print("Sending message {} to {} -- broadcast {}".format(message, address, broadcast))
             #baton.acquire(1, 3)
-            addr, quality, lora_result = ctpc.sendit(address, message, ack_required)
+            receiver, stats, retransmissions, lora_result, time_to_send = ctpc.sendit(address, message, ack_required)
             #baton.release()
-            result = "sucess"
+            result = "success"
             if lora_result == -1:
                 result = "fail"
-            request.Response.ReturnOkJSON({"status" : result})
-            gc.collect()
+
+            return request.Response.ReturnJSON(200, {
+                "receiver": receiver.decode(),
+                "packets" : stats,
+                "retransmissions" : retransmissions,
+                "status" : result, 
+                "time_to_send" : time_to_send})
         except Exception as ex:
             print(ex)
             return request.Response.ReturnJSON(500, {"status" : "You have to send a JSON with address, message and broadcast"})
@@ -172,7 +174,7 @@ class Node:
         while True:
             LORA_CONNECTED = True
             baton.acquire()
-            myaddr, rcvraddr, quality, status = self.ctpc.hello()
+            sender, stats, receiver, retrans, status = self.ctpc.hello()
             baton.release()
             LORA_CONNECTED = False
             sleep(delay)
@@ -199,8 +201,8 @@ class Node:
             try:
                 # baton.acquire()
                 LORA_CONNECTED = True
-                rcvd_data, snd_addr = self.ctpc.recvit()
-                print("Received from {}: {}".format(snd_addr, rcvd_data))
+                rcvd_data, snd_addr, time_to_recv = self.ctpc.recvit()
+                print("Received from {}: {} after {:.2f} seconds".format(snd_addr, rcvd_data, time_to_recv))
                 # Save sender and message in file
                 database.save_message(snd_addr, rcvd_data)
 
@@ -246,15 +248,16 @@ mws2 = MicroWebSrv2()
 
 # For embedded MicroPython, use a very light configuration
 mws2.SetEmbeddedConfig()
-
+#mws2.SetNormalConfig()
 # Set server parameters
-mws2.MaxRequestContentLength = 2*1024*1024
-mws2.RequestsTimeoutSec = 10
+# mws2.BufferSlotSize = 8*1024
+# mws2.MaxRequestContentLength = 8*1024*1024
+# mws2.RequestsTimeoutSec = 10
 mws2.StartManaged()
 
 try :
     while mws2.IsRunning:
-        sleep(0.5)
+        sleep(0.100)
 except KeyboardInterrupt:
     mws2.Stop()
     print("Stop node")

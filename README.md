@@ -23,8 +23,9 @@ The repository is structured as follow:
 - main.py: Main function. Setup BLE, LoRa and all necessary to run the node.
 - www: Folder that contains html files.
 - `lib`:
-  - loractp.py: Contains the Lora Content Transfer Protocol (LoRaCTP) with his API.
-- `MicroWebSrv2`: HTTP Web server library. Github: https://github.com/jczic/MicroWebSrv2
+  - `loractp.py`: Contains the Lora Content Transfer Protocol (LoRaCTP) with his API.
+  - `MicroWebSrv2`: HTTP Web server library. Github: https://github.com/jczic/MicroWebSrv2
+  - `database.py`: Manages the messages database.
 
 ## Firmware versions
 LoPy4 firmware version:

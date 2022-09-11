@@ -59,7 +59,7 @@ class CTPendpoint:
         self.send = socket.socket(socket.AF_LORA, socket.SOCK_RAW)
         self.recv = socket.socket(socket.AF_LORA, socket.SOCK_RAW)
         self.rtc = RTC()
-        self.rtc.init((2022, 7, 21, 19, 47, 0, 0, 0))
+        self.rtc.init((2022, 9, 12, 00, 00, 0, 0, 0))
 
         # Set to True for debugging messages
         self.debug_mode_send = debug_send
@@ -156,6 +156,7 @@ class CTPendpoint:
 
     def _csend(self, payload, the_sock, sndr_addr, rcvr_addr, ack_required=True, hello=False):
 
+        global_time_t0 = time.time()
         # Shortening addresses to last 8 bytes to save space in packet
         sndr_addr = sndr_addr[8:]
         rcvr_addr = rcvr_addr[:8]
@@ -276,9 +277,13 @@ class CTPendpoint:
         blocktbs = []
         payload  = []
         packet = ""
-        return rcvr_addr, stats_psent, stats_retrans, FAILED
+        global_time_t1 = time.time()
+        time_to_send = global_time_t1 - global_time_t0
+        if self.debug_mode_send: print("DEBUG SEND 255: time to send {:.4f} seconds".format(time_to_send))
+        return rcvr_addr, stats_psent, stats_retrans, FAILED, time_to_send
 
     def _crecv(self, the_sock, my_addr, snd_addr):
+        global_time_t0 = time.time()
 
         # Shortening addresses to last 8 bytes
         my_addr  = my_addr[8:]
@@ -373,35 +378,36 @@ class CTPendpoint:
         content = ""
         gc.enable()
         gc.collect()
-        return rcvd_data, snd_addr
+        global_time_t1 = time.time()
+        time_to_recv = global_time_t1 - global_time_t0
+        if self.debug_mode_send: print("DEBUG SEND 255: time to send {:.4f} seconds".format(time_to_recv))
+        return rcvd_data, snd_addr, time_to_recv
 
     def connect(self, dest=ANY_ADDR):
         print("loractp: connecting to... ", dest)
-        rcvr_addr, stats_psent, stats_retrans, FAILED = self._csend(b"CONNECT", self.send, self.lora_mac, dest)
-        return self.my_addr, rcvr_addr, stats_retrans, FAILED
+        rcvr_addr, stats_psent, stats_retrans, FAILED, time_to_send = self._csend(b"CONNECT", self.send, self.lora_mac, dest)
+        return self.my_addr, rcvr_addr, stats_psent, stats_retrans, FAILED, time_to_send
 
     def hello(self, dest=ANY_ADDR):
         if self.debug_mode_send: print("loractp: send hello to... ", dest)
-        rcvr_addr, stats_psent, stats_retrans, FAILED = self._csend(b"HELLO", self.send, self.lora_mac, dest, ack_required=False, hello=True)
-        return self.my_addr, rcvr_addr, stats_retrans, FAILED
+        rcvr_addr, stats_psent, stats_retrans, FAILED, time_to_send = self._csend(b"HELLO", self.send, self.lora_mac, dest, ack_required=False, hello=True)
+        return self.my_addr, rcvr_addr, stats_psent, stats_retrans, FAILED
 
     def listen(self, sender=ANY_ADDR):
         print("loractp: listening for...", sender)
-        rcvd_data, snd_addr = self._crecv(self.recv, self.lora_mac, sender)
+        rcvd_data, snd_addr, time_to_recv = self._crecv(self.recv, self.lora_mac, sender)
         if (rcvd_data==b"CONNECT"):
-            return self.my_addr, snd_addr, 0
-        elif (rcvd_data==b"HELLO"):
             return self.my_addr, snd_addr, 0
         else:
             return self.my_addr, snd_addr, -1
 
     def sendit(self, addr=ANY_ADDR, payload=b'', ack_required=True):
-        rcvr_addr, stats_psent, stats_retrans, FAILED = self._csend(payload, self.send, self.lora_mac, addr, ack_required)
-        return rcvr_addr, stats_retrans, FAILED
+        rcvr_addr, stats_psent, stats_retrans, FAILED, time_to_send = self._csend(payload, self.send, self.lora_mac, addr, ack_required)
+        return rcvr_addr, stats_psent, stats_retrans, FAILED, time_to_send
 
     def recvit(self, addr=ANY_ADDR):
-        rcvd_data, snd_addr = self._crecv(self.recv, self.lora_mac, addr)
-        return rcvd_data, snd_addr
+        rcvd_data, snd_addr, time_to_recv = self._crecv(self.recv, self.lora_mac, addr)
+        return rcvd_data, snd_addr, time_to_recv
 
     def get_lora_mac(self):
         return (self.lora_mac).decode('utf-8')
