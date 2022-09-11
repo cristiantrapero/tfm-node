@@ -1,8 +1,8 @@
 # Una solución basada en LoRa para comunicaciones multimedia en entornos extremos
 The main objective of this work will be to develop a communications system that allows multimedia traffic of any size to be sent over long distances using the **LoRa RAW** (pure LoRa, no LoRaWAN) channel.
 
-# BLE version
-![Bluetooth LE version](https://upload.wikimedia.org/wikipedia/commons/thumb/2/20/Bluetooth_Smart_Logo.svg/241px-Bluetooth_Smart_Logo.svg.png)
+# WiFi version
+![WiFi version](https://upload.wikimedia.org/wikipedia/commons/thumb/a/ae/WiFi_Logo.svg/320px-WiFi_Logo.svg.png)
 
 This is implemented for the __Pycom LoPy 4__. The LoPy setups a BLE server to be able to connect to an Android application to manage the sending of multimedia files and once receive, it is forwarded to another LoPy 4.
 
