@@ -21,6 +21,8 @@ import struct
 import sys
 import time
 import network
+import ujson
+import _thread
 
 __version__ = '0'
 
@@ -146,11 +148,12 @@ class CTPendpoint:
     #
 
     # Register node in discovered list of nodes
-    def __register_node(self, node_name):
+    def __register_node(self, node_name, discovered_node_list):
         # Convert to string
         node_name = node_name.decode('utf-8')
+        discovered_node_list = ujson.loads(discovered_node_list.decode('utf-8'))
         if self.debug_mode_recv: print ("DEBUG RECV 293: HELLO received. Registering node: {}".format(node_name))
-        self.DISCOVERED_NODES[node_name] = {}
+        self.DISCOVERED_NODES[node_name] = discovered_node_list
         # FIXME: If add the datetime the ble callback is called multiple times 
         # self.DISCOVERED_NODES[node_name] = "-".join(map(str, self.rtc.now()[:6]))
 
@@ -315,7 +318,7 @@ class CTPendpoint:
                 # If destination address is broadcast and mensage hello, then no send acknowledgement package
                 if (hello):
                     ack_required = False
-                    self.__register_node(inp_src_addr)
+                    self.__register_node(inp_src_addr, content)
 
                 # getting sender address, if unknown, with the first packet
                 if (not SENDER_ADDR_KNOWN):
@@ -388,9 +391,9 @@ class CTPendpoint:
         rcvr_addr, stats_psent, stats_retrans, FAILED, time_to_send = self._csend(b"CONNECT", self.send, self.lora_mac, dest)
         return self.my_addr, rcvr_addr, stats_psent, stats_retrans, FAILED, time_to_send
 
-    def hello(self, dest=ANY_ADDR):
+    def hello(self, discovered_nodes, dest=ANY_ADDR):
         if self.debug_mode_send: print("loractp: send hello to... ", dest)
-        rcvr_addr, stats_psent, stats_retrans, FAILED, time_to_send = self._csend(b"HELLO", self.send, self.lora_mac, dest, ack_required=False, hello=True)
+        rcvr_addr, stats_psent, stats_retrans, FAILED, time_to_send = self._csend(discovered_nodes, self.send, self.lora_mac, dest, ack_required=False, hello=True)
         return self.my_addr, rcvr_addr, stats_psent, stats_retrans, FAILED
 
     def listen(self, sender=ANY_ADDR):

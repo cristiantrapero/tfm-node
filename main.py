@@ -112,7 +112,8 @@ class Node:
         global LORA_CONNECTED
 
         LORA_CONNECTED = True
-        sender, receiver, stats, quality, status = ctpc.hello()
+        nodes = ujson.dumps(ctpc.get_discovered_nodes()).encode()
+        sender, receiver, stats, quality, status = ctpc.hello(nodes)
         LORA_CONNECTED = False
         if status == 0:
             return request.Response.ReturnJSON(200, {"status" : "success"})
@@ -138,7 +139,6 @@ class Node:
         data = request.GetPostedJSONObject()
         try:
             address = data['address'].encode()
-            message = ujson.dumps(data['message']).encode()
             broadcast = data['broadcast']
             ack_required = True
 
@@ -159,7 +159,7 @@ class Node:
                 "receiver": receiver.decode(),
                 "packets" : stats,
                 "retransmissions" : retransmissions,
-                "status" : result, 
+                "status" : result,
                 "time_to_send" : time_to_send})
         except Exception as ex:
             print(ex)
@@ -182,7 +182,8 @@ class Node:
         while True:
             LORA_CONNECTED = True
             baton.acquire()
-            sender, stats, receiver, retrans, status = self.ctpc.hello()
+            nodes = ujson.dumps(ctpc.get_discovered_nodes()).encode()
+            sender, stats, receiver, retrans, status = self.ctpc.hello(nodes)
             baton.release()
             LORA_CONNECTED = False
             sleep(delay)
@@ -223,7 +224,7 @@ class Node:
                 print("Exception: {}".format(ex))
 
 # Create LoRa CTPC endpoint
-ctpc = loractp.CTPendpoint(debug_send=False, debug_recv=False)
+ctpc = loractp.CTPendpoint(debug_send=True, debug_recv=True)
 node_name = "NODE-{}".format(ctpc.get_my_addr())
 
 print("\n=========================")
@@ -263,6 +264,8 @@ mws2.SetEmbeddedConfig()
 # Set server parameters
 # mws2.BufferSlotSize = 8*1024
 mws2.MaxRequestContentLength = 8*1024*1024
+mws2.CORSAllowAll = True
+
 # mws2.RequestsTimeoutSec = 10
 mws2.StartManaged()
 
