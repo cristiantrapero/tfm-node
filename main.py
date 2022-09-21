@@ -99,10 +99,9 @@ class Node:
         """
         lora_nodes = ctpc.get_discovered_nodes()
         return request.Response.ReturnOkJSON({
-            'nodes' : {
-                        "availables"    :   len(lora_nodes),
-                        "addresses"     :   lora_nodes
-            }})
+                "availables"    :   len(lora_nodes),
+                "addresses"     :   lora_nodes
+            })
 
     @WebRoute(POST, '/hello')
     def send_hello(microWebSrv2, request):
@@ -265,6 +264,7 @@ mws2.SetEmbeddedConfig()
 # mws2.BufferSlotSize = 8*1024
 mws2.MaxRequestContentLength = 8*1024*1024
 mws2.CORSAllowAll = True
+mws2.AllowAllOrigins = True
 
 # mws2.RequestsTimeoutSec = 10
 mws2.StartManaged()
