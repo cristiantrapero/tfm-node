@@ -8,6 +8,7 @@ Inspired by https://github.com/arturenault/reliable-transport-protocol by Artur 
 
 First version by: Pietro GRC dic2017
 Modified by: Pietro GRC apr2020
+Modified by: Cristian Trapero sep2022
 """
 
 from network import LoRa
@@ -154,6 +155,8 @@ class CTPendpoint:
         discovered_node_list = ujson.loads(discovered_node_list.decode('utf-8'))
         if self.debug_mode_recv: print ("DEBUG RECV 293: HELLO received. Registering node: {}".format(node_name))
         self.DISCOVERED_NODES[node_name] = discovered_node_list
+        self.DISCOVERED_NODES['ghost1'] = discovered_node_list
+        self.DISCOVERED_NODES['ghost2'] = discovered_node_list
         # FIXME: If add the datetime the ble callback is called multiple times 
         # self.DISCOVERED_NODES[node_name] = "-".join(map(str, self.rtc.now()[:6]))
 
@@ -391,9 +394,10 @@ class CTPendpoint:
         rcvr_addr, stats_psent, stats_retrans, FAILED, time_to_send = self._csend(b"CONNECT", self.send, self.lora_mac, dest)
         return self.my_addr, rcvr_addr, stats_psent, stats_retrans, FAILED, time_to_send
 
-    def hello(self, discovered_nodes, dest=ANY_ADDR):
+    def hello(self, dest=ANY_ADDR):
         if self.debug_mode_send: print("loractp: send hello to... ", dest)
-        rcvr_addr, stats_psent, stats_retrans, FAILED, time_to_send = self._csend(discovered_nodes, self.send, self.lora_mac, dest, ack_required=False, hello=True)
+        nodes = ujson.dumps(DISCOVERED_NODES).encode()
+        rcvr_addr, stats_psent, stats_retrans, FAILED, time_to_send = self._csend(nodes, self.send, self.lora_mac, dest, ack_required=False, hello=True)
         return self.my_addr, rcvr_addr, stats_psent, stats_retrans, FAILED
 
     def listen(self, sender=ANY_ADDR):

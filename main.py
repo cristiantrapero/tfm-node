@@ -181,8 +181,7 @@ class Node:
         while True:
             LORA_CONNECTED = True
             baton.acquire()
-            nodes = ujson.dumps(ctpc.get_discovered_nodes()).encode()
-            sender, stats, receiver, retrans, status = self.ctpc.hello(nodes)
+            sender, stats, receiver, retrans, status = self.ctpc.hello()
             baton.release()
             LORA_CONNECTED = False
             sleep(delay)
