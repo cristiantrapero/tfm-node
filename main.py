@@ -65,11 +65,11 @@ class WiFi:
         return clients
 
 class Node:
-    def __init__(self, ctpc, wifi, database, node_name):
+    def __init__(self, ctp, wifi, database, node_name):
         """
-        Initialize the Node class with the LoRa CTPC object, the WiFi object and the node name
+        Initialize the Node class with the LoRa CTP object, the WiFi object and the node name
         """
-        self.ctpc = ctpc
+        self.ctp = ctp
         self.wifi = wifi
         self.database = database
         self.node_name = node_name
@@ -79,12 +79,12 @@ class Node:
         """
         Returns the LoRa node info
         """
-        lora_nodes = ctpc.get_discovered_nodes()
+        lora_nodes = ctp.get_discovered_nodes_list()
         return request.Response.ReturnOkJSON({
             'wifi_name'     : wifi.get_name(),
             'wifi_ip'       : wifi.get_ip(),
-            'lora_uid'      : ctpc.get_lora_mac(),
-            'address'       : ctpc.get_my_addr(),
+            'lora_uid'      : ctp.get_lora_mac(),
+            'address'       : ctp.get_my_addr(),
             'nodes'         : {
                                 "availables"    :   len(lora_nodes),
                                 "addresses"     :   lora_nodes
@@ -97,7 +97,7 @@ class Node:
         """
         Returns the LoRa discovered nodes
         """
-        lora_nodes = ctpc.get_discovered_nodes()
+        lora_nodes = ctp.get_discovered_nodes_list()
         return request.Response.ReturnOkJSON({
                 "availables"    :   len(lora_nodes),
                 "addresses"     :   lora_nodes
@@ -111,8 +111,8 @@ class Node:
         global LORA_CONNECTED
 
         LORA_CONNECTED = True
-        nodes = ujson.dumps(ctpc.get_discovered_nodes()).encode()
-        sender, receiver, stats, quality, status = ctpc.hello(nodes)
+        nodes = ujson.dumps(ctp.get_discovered_nodes()).encode()
+        sender, receiver, stats, quality, status = ctp.hello(nodes)
         LORA_CONNECTED = False
         if status == 0:
             return request.Response.ReturnJSON(200, {"status" : "success"})
@@ -142,12 +142,12 @@ class Node:
             ack_required = True
 
             if broadcast:
-                address = ctpc.ANY_ADDR
+                address = ctp.ANY_ADDR
                 ack_required = False
 
             print("Sending message {} to {} -- broadcast {}".format(message, address, broadcast))
             #baton.acquire(1, 3)
-            receiver, stats, retransmissions, lora_result, time_to_send = ctpc.sendit(address, message, ack_required)
+            receiver, stats, retransmissions, lora_result, time_to_send = ctp.sendit(address, message, ack_required)
             #baton.release()
             result = "success"
             if lora_result == -1:
@@ -181,7 +181,7 @@ class Node:
         while True:
             LORA_CONNECTED = True
             baton.acquire()
-            sender, stats, receiver, retrans, status = self.ctpc.hello()
+            sender, stats, receiver, retrans, status = self.ctp.hello()
             baton.release()
             LORA_CONNECTED = False
             sleep(delay)
@@ -208,10 +208,11 @@ class Node:
         global LORA_CONNECTED
 
         while True:
+            print("Waiting for data")
             try:
                 # baton.acquire()
                 LORA_CONNECTED = True
-                rcvd_data, snd_addr, time_to_recv = self.ctpc.recvit()
+                rcvd_data, snd_addr, time_to_recv = self.ctp.recvit()
                 print("Received from {}: {} after {:.2f} seconds".format(snd_addr, rcvd_data, time_to_recv))
                 # Save sender and message in file
                 database.save_message(snd_addr, rcvd_data)
@@ -221,9 +222,9 @@ class Node:
             except Exception as ex:
                 print("Exception: {}".format(ex))
 
-# Create LoRa CTPC endpoint
-ctpc = loractp.CTPendpoint(debug_send=True, debug_recv=True)
-node_name = "NODE-{}".format(ctpc.get_my_addr())
+# Create LoRa CTP endpoint
+ctp = loractp.CTPendpoint(debug_send=True, debug_recv=True)
+node_name = "NODE-{}".format(ctp.get_my_addr())
 
 print("\n=========================")
 print("LoRa node: {}".format(node_name))
@@ -241,10 +242,10 @@ sleep(5)
 database = database.FileHandler()
 
 # Create Node
-node = Node(ctpc, wifi, database, node_name)
+node = Node(ctp, wifi, database, node_name)
 
 # Send hello to others LoRa nodes in a thread every 60 seconds
-_thread.start_new_thread(node.send_lora_hello, (60, 1))
+_thread.start_new_thread(node.send_lora_hello, (10, 1))
 
 # Change LED status every second
 _thread.start_new_thread(node.change_led_status, ())
@@ -258,14 +259,12 @@ mws2 = MicroWebSrv2()
 
 # For embedded MicroPython, use a very light configuration
 mws2.SetEmbeddedConfig()
-#mws2.SetNormalConfig()
+
 # Set server parameters
-# mws2.BufferSlotSize = 8*1024
+mws2.BufferSlotSize = 8*1024
 mws2.MaxRequestContentLength = 8*1024*1024
 mws2.CORSAllowAll = True
 mws2.AllowAllOrigins = True
-
-# mws2.RequestsTimeoutSec = 10
 mws2.StartManaged()
 
 try :

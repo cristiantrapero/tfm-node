@@ -52,7 +52,13 @@ class CTPendpoint:
 
     def __init__(self, debug_send=False, debug_recv=False, debug_hard=False):
 
-        self.lora = LoRa(mode=LoRa.LORA, region=LoRa.EU868)
+        # Configure LoRa
+        self.lora = LoRa(mode = LoRa.LORA,
+                         coding_rate  = LoRa.CODING_4_5,
+                         tx_power = 14,
+                         sf = 7,
+                         bandwidth = LoRa.BW_250KHZ,
+                         power_mode = LoRa.ALWAYS_ON)
 
         # Get lora mac address (device EUI)
         self.lora_mac = binascii.hexlify(network.LoRa().mac()).upper()
@@ -62,7 +68,7 @@ class CTPendpoint:
         self.send = socket.socket(socket.AF_LORA, socket.SOCK_RAW)
         self.recv = socket.socket(socket.AF_LORA, socket.SOCK_RAW)
         self.rtc = RTC()
-        self.rtc.init((2022, 9, 12, 00, 00, 0, 0, 0))
+        self.rtc.init((2022, 9, 25, 00, 00, 0, 0, 0))
 
         # Set to True for debugging messages
         self.debug_mode_send = debug_send
@@ -152,13 +158,16 @@ class CTPendpoint:
     def __register_node(self, node_name, discovered_node_list):
         # Convert to string
         node_name = node_name.decode('utf-8')
-        discovered_node_list = ujson.loads(discovered_node_list.decode('utf-8'))
-        if self.debug_mode_recv: print ("DEBUG RECV 293: HELLO received. Registering node: {}".format(node_name))
+        content = discovered_node_list.decode('utf-8')
+        discovered_node_list = []
+
+        if content != 'None':
+            discovered_node_list = list(ujson.loads(content).keys())
+
+        if self.debug_mode_recv: print ("DEBUG RECV 293: HELLO received. Registering node: {} {}".format(node_name, discovered_node_list))
         self.DISCOVERED_NODES[node_name] = discovered_node_list
-        self.DISCOVERED_NODES['ghost1'] = discovered_node_list
-        self.DISCOVERED_NODES['ghost2'] = discovered_node_list
-        # FIXME: If add the datetime the ble callback is called multiple times 
-        # self.DISCOVERED_NODES[node_name] = "-".join(map(str, self.rtc.now()[:6]))
+
+        if self.debug_mode_recv: print ("DEBUG RECV 296: DISCOVERED_NODES: {}".format(self.DISCOVERED_NODES))
 
     def _csend(self, payload, the_sock, sndr_addr, rcvr_addr, ack_required=True, hello=False):
 
@@ -396,7 +405,12 @@ class CTPendpoint:
 
     def hello(self, dest=ANY_ADDR):
         if self.debug_mode_send: print("loractp: send hello to... ", dest)
-        nodes = ujson.dumps(DISCOVERED_NODES).encode()
+        nodes = b'None'
+        nodes_list = self.get_discovered_nodes_list()
+
+        if len(nodes_list) > 0:
+            nodes = ujson.dumps(dict.fromkeys(nodes_list, '')).encode('utf-8')
+
         rcvr_addr, stats_psent, stats_retrans, FAILED, time_to_send = self._csend(nodes, self.send, self.lora_mac, dest, ack_required=False, hello=True)
         return self.my_addr, rcvr_addr, stats_psent, stats_retrans, FAILED
 
@@ -424,3 +438,6 @@ class CTPendpoint:
 
     def get_discovered_nodes(self):
         return self.DISCOVERED_NODES
+
+    def get_discovered_nodes_list(self):
+        return list(self.DISCOVERED_NODES.keys())
